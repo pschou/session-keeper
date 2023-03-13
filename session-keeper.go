@@ -35,10 +35,22 @@ var (
 	listen  = flag.String("listen", ":2222", "Where to listen to incoming connections (example 1.2.3.4:8080)")
 	target  = flag.String("target", "localhost:2020", "Remote SSHProxy to connect to")
 	verbose = flag.Bool("verbose", false, "Turn on verbosity")
+	version string
 )
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Session-Keeper (github.com/pschou/session-keeper, version: %s)\n\nUsage: %s [options]\n",
+			version, os.Args[0])
+
+		flag.PrintDefaults()
+	}
 	flag.Parse()
+	if flag.NArg() > 0 {
+		fmt.Println("Unknown flag", flag.Args())
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	postSetup()
 
@@ -63,6 +75,8 @@ func main() {
 	}
 }
 
+// Handle a new client connection with retrying and re-establishing the
+// outgoing connection when a TCP outbound connection is lost.
 func handleRequest(conn net.Conn) {
 	if *verbose {
 		log.Println("Incoming connection", conn.RemoteAddr())
@@ -245,8 +259,6 @@ func handleRequest(conn net.Conn) {
 				tosend := buf.Next(int(sz[0])<<8 + int(sz[1]))
 				bufOffset += int64(len(tosend))
 				bufMutex.Unlock()
-				//buf.Next(int(bufOffset - rcvHdr.Offset)) // throw away what we don't need
-				//bufOffset = rcvHdr.Offset
 			}
 
 			// Do the work of the read from remote and printing locally

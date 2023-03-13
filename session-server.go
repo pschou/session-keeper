@@ -21,10 +21,22 @@ var (
 	verbose      = flag.Bool("verbose", false, "Turn on verbosity")
 	portRange    = flag.String("allowed", "1-65535", "Allowed destination ports")
 	allowedPorts map[int]struct{}
+	version      string
 )
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Session-Server (github.com/pschou/session-keeper, version: %s)\n\nUsage: %s [options]\n",
+			version, os.Args[0])
+
+		flag.PrintDefaults()
+	}
 	flag.Parse()
+	if flag.NArg() > 0 {
+		fmt.Println("Unknown flag", flag.Args())
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	allowedPorts = hypenRange(*portRange)
 
@@ -68,6 +80,8 @@ type session struct {
 	mutex sync.Mutex
 }
 
+// Handle inbound connections, matching up any previously established sessions to
+// properly handle the reconnect.
 func handleRequest(conn net.Conn) {
 	defer conn.Close()
 	if *verbose {
@@ -165,7 +179,6 @@ func handleRequest(conn net.Conn) {
 
 	if rcvHdr.Offset == -3 {
 		// Got an EOF signal, close and delete
-		// EOF the session
 		if *verbose {
 			log.Println("Got an EOF signal from remote, closing and deleting session")
 		}
@@ -210,8 +223,6 @@ func handleRequest(conn net.Conn) {
 		tosend := mySession.buf.Next(int(sz[0])<<8 + int(sz[1]))
 		mySession.bufOffset += int64(len(tosend))
 		mySession.bufMutex.Unlock()
-		//mySession.buf.Next(int(mySession.bufOffset - rcvHdr.Offset)) // throw away what we don't need
-		//mySession.bufOffset = rcvHdr.Offset
 	}
 
 	// Do the work of the read from remote
@@ -287,29 +298,6 @@ func handleRequest(conn net.Conn) {
 			}
 			conn.Close()
 		}
-		/*
-			n, err := mySession.conn.Read(sendBuf)
-			if err != nil {
-				close = true
-				mySession.conn.Close()
-				mySession.conn = nil
-				localErr = err
-			}
-			tosend := sendBuf[:n]
-			for len(tosend) > 0 {
-				if *verbose {
-					fmt.Printf("fromDST %q  off: %d  buf: %d\n", tosend, mySession.bufOffset, mySession.buf.Len())
-				}
-				wn, writeErr := conn.Write(tosend)
-				if close || writeErr != nil {
-					// add the message left to send to the buffer and return
-					mySession.buf.Write(tosend)
-					close = true
-					break readLocal
-				}
-				mySession.bufOffset += int64(wn)
-				tosend = tosend[wn:]
-			}*/
 	}
 	if localErr != nil {
 		log.Println("local error", localErr)
